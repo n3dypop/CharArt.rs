@@ -1,0 +1,26 @@
+[package]
+name = "charart"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.89"
+description = "Streaming image, GIF and video character art with optional NVIDIA cuTile acceleration"
+license = "MIT"
+
+[features]
+default = []
+cuda = ["dep:cutile", "dep:cuda-core", "dep:cutile-ir"]
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "pnm"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+unicode-width = "0.2"
+crossterm = "0.29"
+ctrlc = "3"
+cutile = { git = "https://github.com/NVIDIA/cuda-rust", rev = "e027ac324f663e8408c13c116d7dddd58d5e8daf", optional = true }
+cuda-core = { git = "https://github.com/NVIDIA/cuda-rust", rev = "e027ac324f663e8408c13c116d7dddd58d5e8daf", optional = true }
+
+cutile-ir = { git = "https://github.com/NVIDIA/cuda-rust", rev = "e027ac324f663e8408c13c116d7dddd58d5e8daf", optional = true }
