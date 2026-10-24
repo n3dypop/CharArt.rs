@@ -15,7 +15,8 @@ impl Transform {
             }),
         }
     }
-    #[inline]
+    // Keep the per-pixel transform fused into the sampling loop across codegen units.
+    #[inline(always)]
     pub(crate) fn pack(&self, pixel: [u8; 4]) -> u32 {
         let a = u32::from(pixel[3]);
         let mut rgb = if a == 255 {

@@ -3,13 +3,14 @@ use anyhow::{Context, Result, bail};
 use image::{AnimationDecoder, RgbaImage};
 use std::{
     fs::File,
-    io::{BufRead, BufReader, Read},
+    io::{BufRead, BufReader, Cursor, Read, Seek},
     path::Path,
     process::{Child, Command, Stdio},
     sync::mpsc::{self, Receiver},
     thread::JoinHandle,
 };
 pub const MAX_PIXELS: u64 = 33_554_432;
+const BMP_BUFFER_BYTES: u64 = MAX_PIXELS * 4 + 65_536;
 pub struct Frame {
     pub image: RgbaImage,
     pub pts: f64,
@@ -29,12 +30,38 @@ fn check_size(w: u32, h: u32) -> Result<()> {
     }
     Ok(())
 }
+fn decode_bmp(reader: impl BufRead + Seek) -> Result<RgbaImage> {
+    use image::ImageDecoder;
+    let mut decoder = image::codecs::bmp::BmpDecoder::new(reader)?;
+    let (w, h) = decoder.dimensions();
+    check_size(w, h)?;
+    let mut limits = image::Limits::default();
+    limits.max_alloc = Some(MAX_PIXELS * 8);
+    limits.reserve(decoder.total_bytes())?;
+    decoder.set_limits(limits)?;
+    Ok(image::DynamicImage::from_decoder(decoder)?.into_rgba8())
+}
 impl Source {
     pub fn open(path: &Path) -> Result<Self> {
         if !path.is_file() {
             bail!("input must be a local regular file: {}", path.display());
         }
         let mut reader = image::ImageReader::open(path)?.with_guessed_format()?;
+        if reader.format() == Some(image::ImageFormat::Bmp) {
+            let mut input = reader.into_inner();
+            let encoded_size = input.get_ref().metadata()?.len();
+            if encoded_size <= BMP_BUFFER_BYTES {
+                let (w, h) = image::ImageReader::open(path)?
+                    .with_guessed_format()?
+                    .into_dimensions()?;
+                check_size(w, h)?;
+                // Bound the cache to one maximum-size RGBA frame plus BMP headers.
+                let mut bytes = vec![0; encoded_size as usize];
+                input.read_exact(&mut bytes)?;
+                return Ok(Self::Still(Some(decode_bmp(Cursor::new(bytes))?)));
+            }
+            reader = image::ImageReader::with_format(input, image::ImageFormat::Bmp);
+        }
         if reader.format() == Some(image::ImageFormat::Gif) {
             let mut decoder =
                 image::codecs::gif::GifDecoder::new(BufReader::new(File::open(path)?))?;
@@ -157,7 +184,7 @@ impl Video {
                 "-an",
                 "-sn",
                 "-vf",
-                "showinfo",
+                "showinfo=checksum=0",
                 "-fps_mode",
                 "passthrough",
                 "-f",

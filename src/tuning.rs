@@ -61,17 +61,26 @@ pub fn analyze(image: &RgbaImage, background: [u8; 3], color_output: bool) -> Re
     let mut hist = [0u64; 256];
     let mut sum = 0u64;
     let mut chroma = 0u64;
+    let mut xs = [0usize; 256];
+    for (x, sx) in xs[..w as usize].iter_mut().enumerate() {
+        *sx = (((2 * x as u64 + 1) * image.width() as u64 / (2 * w as u64))
+            .min(image.width() as u64 - 1)) as usize;
+    }
+    let pixels = image.as_raw().as_chunks::<4>().0;
     for y in 0..h {
-        for x in 0..w {
-            let sx = ((2 * x as u64 + 1) * image.width() as u64 / (2 * w as u64))
-                .min(image.width() as u64 - 1) as u32;
-            let sy = ((2 * y as u64 + 1) * image.height() as u64 / (2 * h as u64))
-                .min(image.height() as u64 - 1) as u32;
-            let p = image.get_pixel(sx, sy);
+        let sy = ((2 * y as u64 + 1) * image.height() as u64 / (2 * h as u64))
+            .min(image.height() as u64 - 1) as usize;
+        let row = &pixels[sy * image.width() as usize..(sy + 1) * image.width() as usize];
+        for &sx in &xs[..w as usize] {
+            let p = row[sx];
             let a = p[3] as u32;
-            let c: [u32; 3] = std::array::from_fn(|i| {
-                (p[i] as u32 * a + background[i] as u32 * (255 - a) + 127) / 255
-            });
+            let c: [u32; 3] = if a == 255 {
+                [p[0] as u32, p[1] as u32, p[2] as u32]
+            } else {
+                std::array::from_fn(|i| {
+                    (p[i] as u32 * a + background[i] as u32 * (255 - a) + 127) / 255
+                })
+            };
             let l = (77 * c[0] + 150 * c[1] + 29 * c[2] + 128) / 256;
             hist[l as usize] += 1;
             sum += l as u64;
